@@ -1,0 +1,407 @@
+version: '3.8'
+
+# 🚀 CRYPTOBOT V4.2 - UNIFIED DOCKER ORCHESTRATION
+# 3-Agent Swarm Standard (Infrastructure + Hot Path + Cold Path)
+
+networks:
+  enki-network:
+    driver: bridge
+
+services:
+  # ==========================================
+  # 🧱 INFRASTRUCTURE LAYER
+  # ==========================================
+
+  questdb:
+    image: questdb/questdb:latest
+    container_name: enki-questdb
+    ports:
+      - "9000:9000" # REST API / Web Console
+      - "9009:9009" # Line Protocol (ILP) - High Speed Ingestion
+      - "8812:8812" # Postgres Wire Protocol (Read)
+    environment:
+      - QDB_TELEMETRY_ENABLED=false
+      - QDB_METRICS_ENABLED=true
+      - QDB_CAIRO_COMMIT_LAG=2000 # Optimization for heavy ingestion
+      - QDB_CAIRO_MAX_UNCOMMITTED_ROWS=50000 # Optimization for heavy ingestion
+      - QDB_CAIRO_READER_POOL_DEFAULT_MAX_SEGMENTS=1000
+      - QDB_CAIRO_WRITER_STUCK_PARTITION_TIMEOUT=300000
+      - QDB_CAIRO_MAX_MAP_COUNT=1048576
+      - QDB_CAIRO_INACTIVE_READER_TTL=300 # Agresywne wymuszenie czyszczenia mmap co 0.3s (Scenariusz Kalkulator OOM)
+      - QDB_CAIRO_WAL_SUSPEND_ON_EXTERNAL_ERROR=false
+      - QDB_CAIRO_SQL_DELETE_ENABLED=true
+      - QDB_CAIRO_SQL_JIT_MODE=off
+
+    volumes:
+      - questdb_data:/var/lib/questdb
+    networks:
+      - enki-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    restart: unless-stopped
+    stop_grace_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: enki-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: enki-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 🧠 BRAIN LAYER (Orchestration & Stats)
+  # ==========================================
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: enki-orchestrator
+    command: [ "python", "-m", "Brain.orchestrator.main" ]
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+      - LOG_LEVEL=INFO
+      - ENKI_VAULT_SECRET=${ENKI_VAULT_SECRET}
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./Brain:/app/Brain
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 🔥 HOT PATH (Real-time Flow)
+  # ==========================================
+
+  download:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: enki-download
+    command: [ "python", "-m", "Hot.Download.main" ]
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+      - HISTORY_LOOKBACK_DAYS=730
+      - FALLBACK_NODE_A_HOST=${FALLBACK_NODE_A_HOST}
+      - FALLBACK_NODE_A_PORT=${FALLBACK_NODE_A_PORT}
+    volumes:
+      - ./Hot/Download:/app/Hot/Download
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - questdb
+      - orchestrator
+    networks:
+      - enki-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  trading:
+    build:
+      context: .
+      dockerfile: Hot/Trading/Dockerfile
+    container_name: enki-trading
+    command: [ "watchmedo", "auto-restart", "--directory=./Hot/Trading", "--pattern=*.py", "--recursive", "--", "python", "-m", "Hot.Trading.main" ]
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+      - ENKI_TRADING_DRY_RUN=True
+      - ENKI_TRADING_DRY_RUN_INITIAL_CAPITAL=10000.0
+      - ENKI_VAULT_SECRET=${ENKI_VAULT_SECRET}
+    volumes:
+      - ./Hot/Trading:/app/Hot/Trading
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+      - redis
+      - postgres
+      - questdb
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  calculator:
+    build:
+      context: .
+      dockerfile: Hot/Calculator/Dockerfile
+    container_name: enki-calculator
+    profiles: ["disabled"]
+    command: [ "watchmedo", "auto-restart", "--directory=./Hot/Calculator", "--pattern=*.py", "--recursive", "--", "python", "-m", "Hot.Calculator.main" ]
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+      - BACKFILL_PATROL_INTERVAL=60
+    volumes:
+      - ./Hot/Calculator:/app/Hot/Calculator
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  predictor:
+    build:
+      context: .
+      dockerfile: Hot/Predictor/Dockerfile
+    container_name: enki-predictor
+    command: [ "watchmedo", "auto-restart", "--directory=./Hot/Predictor", "--pattern=*.py", "--recursive", "--", "python", "-m", "Hot.Predictor.service" ]
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+    volumes:
+      - ./Hot/Predictor:/app/Hot/Predictor
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  selector:
+    build:
+      context: .
+      dockerfile: Hot/Selector/Dockerfile
+    container_name: enki-selector
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+    volumes:
+      - ./Hot/Selector:/app/Hot/Selector
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 🧊 COLD PATH (Analysis & Training)
+  # ==========================================
+
+  labeler:
+    build:
+      context: .
+      dockerfile: Cold/Labeler/Dockerfile
+    container_name: enki-labeler
+    profiles: ["disabled"]
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+    volumes:
+      - ./Cold/Labeler:/app/Cold/Labeler
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  evaluator:
+    build:
+      context: .
+      dockerfile: Cold/Evaluator/Dockerfile
+    container_name: enki-evaluator
+    command: [ "watchmedo", "auto-restart", "--directory=./Cold/Evaluator", "--pattern=*.py", "--recursive", "--", "python", "-m", "Cold.Evaluator.main" ]
+    environment:
+      - MOD_NAME=Evaluator
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+    volumes:
+      - ./Cold/Evaluator:/app/Cold/Evaluator
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  trainer:
+    build:
+      context: .
+      dockerfile: Cold/Trainer/Dockerfile
+    container_name: enki-trainer
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+    volumes:
+      - ./Cold/Trainer:/app/Cold/Trainer
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+    networks:
+      - enki-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  # ==========================================
+  # 🌐 MONITOR LAYER (Dashboard & UX)
+  # ==========================================
+
+  monitor:
+    build:
+      context: .
+      dockerfile: Brain/monitor/frontend/Dockerfile.dev
+    container_name: enki-monitor-ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./Brain/monitor/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - monitor-api
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+  monitor-api:
+    build:
+      context: .
+      dockerfile: Brain/monitor/backend/Dockerfile
+    container_name: enki-monitor-api
+    command: [ "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload", "--app-dir", "/app/Brain/monitor/backend" ]
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - QUESTDB_HOST=questdb
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=enki_user
+      - POSTGRES_PASSWORD=enki_password
+      - POSTGRES_DB=enki_db
+      - ADMIN_USERNAME=admin
+      - ORCHESTRATOR_URL=http://orchestrator:8000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-ENKI_SUPER_SECRET_KEY_12345}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL:-https://api.clerk.com/v1/jwks}
+      - ENKI_VAULT_SECRET=${ENKI_VAULT_SECRET}
+      - FALLBACK_NODE_A_HOST=${FALLBACK_NODE_A_HOST}
+      - FALLBACK_NODE_A_PORT=${FALLBACK_NODE_A_PORT}
+    volumes:
+      - ./Brain/monitor/backend:/app/Brain/monitor/backend
+      - ./Shared:/app/Shared
+      - ./Storage:/app/Storage
+      - ./Messaging:/app/Messaging
+    depends_on:
+      - orchestrator
+      - redis
+      - postgres
+      - questdb
+    networks:
+      - enki-network
+    restart: unless-stopped
+
+volumes:
+  questdb_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: D:/docker-data/questdb
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: D:/docker-data/postgres
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: D:/docker-data/redis

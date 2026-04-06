@@ -1,0 +1,28 @@
+# Local env files
+.env
+.env.local
+.env.*.local
+web/.env
+web/.env.local
+
+# Node modules
+node_modules/
+web/node_modules/
+
+# Next.js build output
+.next/
+web/.next/
+out/
+web/out/
+build/
+web/build/
+
+# Mac / Windows
+.DS_Store
+Thumbs.db
+
+# Agent files
+.agent/
+
+# Vercel
+.vercel

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  # Izolowana Baza Danych do Projektu Premiere Time
+  postgres-premiere:
+    image: postgres:15-alpine
+    container_name: premiere-db
+    ports:
+      - "5434:5432" # Zamieniono publiczny na 5434 (Uniknięcie błędu z Enki na gniezdzie)
+    environment:
+      - POSTGRES_USER=user_premiere
+      - POSTGRES_PASSWORD=superpassword
+      - POSTGRES_DB=premiere_db
+    volumes:
+      - premiere_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  premiere_postgres_data:
+    driver: local
