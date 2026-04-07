@@ -124,7 +124,7 @@ export default function Navbar() {
         <div className="flex items-center gap-4 border-l border-white/10 pl-6 shrink-0">
           {isLoaded && isSignedIn ? (
             <div className="flex items-center gap-3">
-              <UserButton afterSignOutUrl="/sign-in" />
+              <UserButton />
               <button 
                 onClick={() => signOut({ redirectUrl: "/sign-in" })}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition border border-white/5"
