@@ -1,456 +1,462 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import Navbar from "@/components/Navbar";
-import { Search, Plus, Calendar, CheckSquare, Layers, Users, ChevronDown, Pin, Home, UserPlus, Trash2 } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { 
+  Share2, 
+  Globe, 
+  Calendar, 
+  MapPin, 
+  Clock, 
+  Mail, 
+  Phone, 
+  ChevronRight, 
+  Star, 
+  Menu, 
+  X,
+  CheckCircle2,
+  Anchor,
+  Zap,
+  PenTool,
+  Search,
+  Plus,
+  ArrowRight,
+  LogOut
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useClerk } from "@clerk/nextjs";
 
-export default function Dashboard() {
+const AeternaTattooStudio = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [mySeries, setMySeries] = useState<any[]>([]);
+  const [activeBoardData, setActiveBoardData] = useState<any>(null);
+  const [defaultBoard, setDefaultBoard] = useState("private");
+  const [isBoardSelectOpen, setIsBoardSelectOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [mySeries, setMySeries] = useState<any[]>([]);
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [defaultBoard, setDefaultBoard] = useState<string>("private");
-  const [isBoardSelectOpen, setIsBoardSelectOpen] = useState(false);
-  const [activeBoardData, setActiveBoardData] = useState<any>(null);
   
-  // Custom Modal dla Tworzenia Grupy (Bypass Native Prompt Issue)
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newWorkspaceName, setNewWorkspaceName] = useState("");
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
-  const [workspaceToDelete, setWorkspaceToDelete] = useState<string | null>(null);
+  const { signOut } = useClerk();
 
-  const confirmDeleteWorkspace = async () => {
-    if(!workspaceToDelete) return;
-    const res = await fetch(`/api/workspace?id=${workspaceToDelete}`, { method: 'DELETE' });
-    if(res.ok) {
-       setDefaultBoard('private');
-       await fetchWorkspaces();
-       setWorkspaceToDelete(null);
-    } else {
-       alert("Ostro... Tylko twórca (owner) pokoju może go skasować!");
-       setWorkspaceToDelete(null);
-    }
-  };
+  // Scroll effect
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const fetchWorkspaces = async () => {
     const res = await fetch("/api/workspace");
     if (res.ok) {
       setWorkspaces(await res.json());
-    } else {
-      console.error("Failed to fetch workspaces", await res.text());
     }
   };
 
   const fetchMySeries = async () => {
     const res = await fetch("/api/series");
-    if (!res.ok) {
-       console.error("Failed to fetch series", await res.text());
-       return;
+    if (res.ok) {
+      const data = await res.json();
+      const sorted = (data.length ? data : []).sort((a: any, b: any) => {
+        const dateA = a.seriesCache?.next_ep_air_date ? new Date(a.seriesCache.next_ep_air_date).getTime() : Infinity;
+        const dateB = b.seriesCache?.next_ep_air_date ? new Date(b.seriesCache.next_ep_air_date).getTime() : Infinity;
+        return dateA - dateB;
+      });
+      setMySeries(sorted);
     }
-    const data = await res.json();
-    const sorted = (data.length ? data : []).sort((a: any, b: any) => {
-      const dateA = a.seriesCache?.next_ep_air_date ? new Date(a.seriesCache.next_ep_air_date).getTime() : Infinity;
-      const dateB = b.seriesCache?.next_ep_air_date ? new Date(b.seriesCache.next_ep_air_date).getTime() : Infinity;
-      return dateA - dateB;
-    });
-    setMySeries(sorted);
   };
 
   const loadGridData = async (boardId: string) => {
-      if (boardId === "private") {
-         fetchMySeries();
-         setActiveBoardData(null);
+    if (boardId === "private") {
+      fetchMySeries();
+      setActiveBoardData(null);
+    } else {
+      const res = await fetch(`/api/workspace?id=${boardId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data) {
+          const sorted = (data.series?.length ? data.series : []).sort((a: any, b: any) => {
+            const dateA = a.series?.next_ep_air_date ? new Date(a.series.next_ep_air_date).getTime() : Infinity;
+            const dateB = b.series?.next_ep_air_date ? new Date(b.series.next_ep_air_date).getTime() : Infinity;
+            return dateA - dateB;
+          });
+          data.series = sorted;
+          setActiveBoardData(data);
+        } else {
+          localStorage.setItem("defaultBoard", "private");
+          setDefaultBoard("private");
+          fetchMySeries();
+          setActiveBoardData(null);
+        }
       } else {
-         const res = await fetch(`/api/workspace?id=${boardId}`);
-         if (res.ok) {
-            const data = await res.json();
-            if (data) {
-               const sorted = (data.series?.length ? data.series : []).sort((a: any, b: any) => {
-                 const dateA = a.series?.next_ep_air_date ? new Date(a.series.next_ep_air_date).getTime() : Infinity;
-                 const dateB = b.series?.next_ep_air_date ? new Date(b.series.next_ep_air_date).getTime() : Infinity;
-                 return dateA - dateB;
-               });
-               data.series = sorted;
-               setActiveBoardData(data);
-            } else {
-               localStorage.setItem("defaultBoard", "private");
-               setDefaultBoard("private");
-               fetchMySeries();
-               setActiveBoardData(null);
-            }
-         } else {
-            // Unikamy blokady jeśli res.ok === false (np. 403 Unauthorized wynikający ze zmodyfikowanego dostępu lub cudzego localStorage)
-            localStorage.setItem("defaultBoard", "private");
-            setDefaultBoard("private");
-            fetchMySeries();
-            setActiveBoardData(null);
-         }
+        localStorage.setItem("defaultBoard", "private");
+        setDefaultBoard("private");
+        fetchMySeries();
+        setActiveBoardData(null);
       }
+    }
   };
 
   useEffect(() => {
     fetchWorkspaces();
-    const stored = localStorage.getItem("defaultBoard") || "private";
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("defaultBoard") || "private" : "private";
     setDefaultBoard(stored);
     loadGridData(stored);
   }, []);
 
-  const toggleDefaultBoard = (e: any, id: string) => {
-     e.stopPropagation();
-     localStorage.setItem("defaultBoard", id);
-     setDefaultBoard(id);
-     setIsBoardSelectOpen(false);
-     loadGridData(id);
-  }
-
-  // KROK 4: Wyszukiwanie na serwerach Hollywood
   const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
     if (e.target.value.length < 3) return setSearchResults([]);
-
-    setLoading(true);
+    
     const res = await fetch(`/api/search?q=${encodeURIComponent(e.target.value)}`);
-    const data = await res.json();
-    setSearchResults(data.results?.slice(0, 5) || []);
-    setLoading(false);
-  };
-
-  // Dodanie serialu do prywatnej tablicy lub do wspólnego pokoju
-  const addSeries = async (s: any, workspaceId: string | null = null) => {
-    if(workspaceId) {
-       await fetch("/api/workspace", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ action: "ADD_SERIES", workspaceId, tmdb_id: s.id, title: s.name, poster_path: s.poster_path, status: "Returning Series" })
-       });
-    } else {
-       await fetch("/api/series", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ tmdb_id: s.id, title: s.name, poster_path: s.poster_path, status: "Returning Series" })
-       });
+    if (res.ok) {
+      setSearchResults(await res.json());
     }
-    setSearchResults([]);
-    setQuery("");
-    loadGridData(defaultBoard);
-    fetchWorkspaces();
   };
 
-  // KROK 5.4: Binge Archiwum
-  const markAsBinge = async (tmdb_id: number) => {
-    await fetch("/api/series", {
-      method: "PATCH",
+  const addToBoard = async (item: any) => {
+    const res = await fetch("/api/series", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tmdb_id })
+      body: JSON.stringify({
+        tmdb_id: item.id,
+        title: item.name || item.original_name,
+        poster_path: item.poster_path,
+        status: item.status || "Unknown"
+      })
     });
-    loadGridData(defaultBoard);
-  };
-
-  const openInviteModal = async () => {
-    setIsInviteModalOpen(true);
-    const res = await fetch("/api/users");
-    if(res.ok) {
-      const allUsers = await res.json();
-      const currentMemberIds = activeBoardData?.members?.map((m: any) => m.userId) || [];
-      const notInRoom = allUsers.filter((u: any) => !currentMemberIds.includes(u.id));
-      setAvailableUsers(notInRoom);
+    
+    if (res.ok) {
+      setQuery("");
+      setSearchResults([]);
+      loadGridData(defaultBoard);
     }
   };
 
-  const inviteUserById = async (userId: string) => {
-     if (defaultBoard === "private") return;
-     const res = await fetch("/api/workspace", {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ action: "ADD_MEMBER", userId_to_add: userId, workspaceId: defaultBoard })
-     });
-     if(res.ok) {
-        setIsInviteModalOpen(false);
-        fetchWorkspaces();
-        loadGridData(defaultBoard);
-     }
+  const fadeInUp = {
+    initial: { opacity: 0, y: 20 },
+    whileInView: { opacity: 1, y: 0 },
+    viewport: { once: true },
+    transition: { duration: 0.6 }
   };
+
+  const services = [
+    {
+      title: "Tatuaż Minimalistyczny",
+      desc: "Delikatne, precyzyjne linie, które pięknie się starzeją. Idealne na pierwszy tatuaż.",
+      icon: <PenTool className="w-8 h-8 text-amber-500" />,
+    },
+    {
+      title: "Realizm",
+      desc: "Fotorealistyczne portrety i detale przeniesione na skórę z mistrzowską precyzją.",
+      icon: <Star className="w-8 h-8 text-amber-500" />,
+    },
+    {
+      title: "Tradycyjny i Neo-Trad",
+      desc: "Mocne kontury i żywe kolory, które przetrwają próbę czasu. Hołd dla klasyki.",
+      icon: <Anchor className="w-8 h-8 text-amber-500" />,
+    },
+    {
+      title: "Cover-up i Poprawki",
+      desc: "Przekształcamy stare wzory w nowe arcydzieła, z których znów będziesz dumny.",
+      icon: <Zap className="w-8 h-8 text-amber-500" />,
+    },
+  ];
 
   return (
-    <div className="relative min-h-screen bg-[#05070e] overflow-hidden">
-      {/* Ambient Gradient Glows (Dribbble Like) */}
-      {/* Top Left Cluster */}
-      <div className="absolute top-[-5%] left-[-5%] w-[500px] h-[500px] bg-purple-500/30 rounded-full blur-[100px] pointer-events-none mix-blend-screen" />
-      <div className="absolute top-[10%] left-[10%] w-[350px] h-[350px] bg-blue-500/20 rounded-full blur-[90px] pointer-events-none mix-blend-screen" />
+    <div className="min-h-screen bg-[#0a0a0a] text-stone-100 font-sans selection:bg-amber-500 selection:text-black">
       
-      {/* Top Right Cluster */}
-      <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-500/25 rounded-full blur-[120px] pointer-events-none mix-blend-screen" />
-      <div className="absolute top-[20%] right-[10%] w-[400px] h-[400px] bg-pink-600/20 rounded-full blur-[100px] pointer-events-none mix-blend-screen" />
-      
-      {/* Bottom Center & Sides */}
-      <div className="absolute bottom-[-10%] left-[20%] w-[500px] h-[500px] bg-fuchsia-600/20 rounded-full blur-[110px] pointer-events-none mix-blend-screen" />
-      <div className="absolute bottom-[15%] right-[15%] w-[450px] h-[450px] bg-violet-600/25 rounded-full blur-[100px] pointer-events-none mix-blend-screen" />
-      <div className="absolute top-[50%] left-[-15%] w-[400px] h-[400px] bg-indigo-500/20 rounded-full blur-[130px] pointer-events-none mix-blend-screen" />
-
-      <Navbar />
-
-      <main className="max-w-6xl mx-auto px-6 pt-[120px] pb-24 relative z-10">
-        
-        {/* Górna sekcja - Wyszukiwarka i Tabs w jednej linii */}
-        <section className="mb-14 flex flex-col md:flex-row items-center justify-between gap-6 relative z-50">
+      {/* Nawigacja */}
+      <nav className={`fixed w-full z-50 transition-all duration-300 ${scrolled ? 'bg-black/95 backdrop-blur-md py-4 shadow-lg' : 'bg-transparent py-6'}`}>
+        <div className="container mx-auto px-6 flex justify-between items-center">
+          <div className="text-2xl font-bold tracking-tighter flex items-center gap-2">
+            <span className="text-amber-500 uppercase tracking-[0.2em]">Aeterna</span>
+          </div>
           
-          <div className="relative w-full md:w-[60%] lg:w-[45%]">
-            <div className="rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-fuchsia-500 p-[1.5px] shadow-lg transition-all focus-within:shadow-[0_0_25px_rgba(168,85,247,0.4)] group">
-              <div className="flex items-center bg-[#090b14]/90 backdrop-blur-2xl rounded-full px-6 py-3.5 w-full h-full">
-                <Search className="text-gray-400 group-focus-within:text-indigo-400 transition-colors mr-3" size={24} />
-                <input 
+          <div className="hidden md:flex items-center space-x-8 uppercase text-xs tracking-widest font-semibold">
+            <a href="#about" className="hover:text-amber-500 transition-colors">O nas</a>
+            <a href="#portfolio" className="hover:text-amber-500 transition-colors">Portfolio</a>
+            <button 
+              onClick={() => signOut({ redirectUrl: '/sign-in' })}
+              className="text-white hover:text-amber-500 transition-colors"
+              title="Wyloguj"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+            <a href="#contact" className="px-5 py-2 bg-amber-600 text-black hover:bg-amber-500 transition-all rounded-sm font-bold">Zarezerwuj termin</a>
+          </div>
+
+          <button className="md:hidden text-white" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            {isMenuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
+      </nav>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div 
+            initial={{ opacity: 0, x: 300 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 300 }}
+            className="fixed inset-0 z-40 bg-black flex flex-col items-center justify-center space-y-8"
+          >
+            <a href="#about" onClick={() => setIsMenuOpen(false)} className="text-2xl uppercase tracking-widest">O nas</a>
+            <a href="#portfolio" onClick={() => setIsMenuOpen(false)} className="text-2xl uppercase tracking-widest">Portfolio</a>
+            <button 
+              onClick={() => { signOut({ redirectUrl: '/sign-in' }); setIsMenuOpen(false); }}
+              className="text-2xl uppercase tracking-widest text-amber-500"
+            >
+              Wyloguj
+            </button>
+            <a href="#contact" onClick={() => setIsMenuOpen(false)} className="px-8 py-3 bg-amber-600 text-black rounded-sm font-bold uppercase tracking-widest">Zarezerwuj</a>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hero Section */}
+      <section className="relative h-screen flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <img 
+            src="https://images.unsplash.com/photo-1598371839696-5c5bb00bdc28?auto=format&fit=crop&q=80" 
+            alt="Proces tatuowania" 
+            className="w-full h-full object-cover opacity-40 scale-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent"></div>
+        </div>
+
+        <div className="container mx-auto px-6 relative z-10 text-center mt-20">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8 }}
+          >
+            <h1 className="text-5xl md:text-8xl font-serif mb-6 italic">Sztuka na wieczność.</h1>
+            <p className="text-lg md:text-xl text-stone-400 max-w-2xl mx-auto mb-10 leading-relaxed font-light italic text-balance">
+              Zmień swoją skórę w płótno dla mistrzowskiego rzemiosła. Studio Aeterna to miejsce, gdzie pasja spotyka się z trwałością.
+            </p>
+            
+            {/* Search Input */}
+            <div className="relative max-w-xl mx-auto mb-12">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-stone-500" />
+                </div>
+                <input
+                  type="text"
                   value={query}
                   onChange={handleSearch}
-                  placeholder="Search..." 
-                  className="bg-transparent text-lg w-full outline-none text-white placeholder-gray-500 font-medium"
+                  className="block w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-full focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-white placeholder:text-stone-600 backdrop-blur-sm"
+                  placeholder="Szukaj serialu do dodania..."
                 />
-                {loading && <div className="w-5 h-5 border-2 border-t-fuchsia-500 rounded-full animate-spin"></div>}
-              </div>
+                
+                {/* Search Results Dropdown */}
+                <AnimatePresence>
+                  {searchResults.length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute top-full left-0 right-0 mt-2 bg-neutral-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl z-50 max-h-[400px] overflow-y-auto"
+                    >
+                      {searchResults.map((item: any) => (
+                        <div 
+                          key={item.id}
+                          onClick={() => addToBoard(item)}
+                          className="flex items-center gap-4 p-3 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/5 last:border-0"
+                        >
+                          <img 
+                            src={item.poster_path ? `https://image.tmdb.org/t/p/w92${item.poster_path}` : "https://via.placeholder.com/92x138?text=N/A"} 
+                            className="w-12 h-18 object-cover rounded shadow-sm"
+                            alt=""
+                          />
+                          <div className="flex-1 text-left">
+                            <h4 className="font-bold text-sm text-white">{item.name || item.original_name}</h4>
+                            <p className="text-xs text-stone-500">{item.first_air_date?.split('-')[0]}</p>
+                          </div>
+                          <Plus className="w-5 h-5 text-amber-500" />
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
             </div>
 
-            {/* Float Dropdown Results */}
-            {searchResults.length > 0 && (
-              <div className="absolute top-[110%] left-0 w-full bg-black/50 backdrop-blur-2xl border border-white/10 ring-1 ring-inset ring-indigo-500/20 rounded-3xl overflow-hidden shadow-2xl flex flex-col z-50 mt-2">
-                {searchResults.map((s) => (
-                  <div key={s.id} className="flex gap-4 p-4 items-center hover:bg-white/5 border-b border-white/5 last:border-0 transition group">
-                    <img 
-                      src={s.poster_path ? `https://image.tmdb.org/t/p/w92${s.poster_path}` : "https://via.placeholder.com/92x138?text=Brak"}
-                      alt={s.name}
-                      className="w-12 h-16 rounded-md object-cover ring-1 ring-white/10 shadow-lg"
-                    />
-                    <div className="flex-1 flex flex-col justify-center">
-                      <h4 className="font-bold text-white text-lg flex items-center gap-2">
-                         {s.name}
-                         {s.watch_provider_logo && <img src={`https://image.tmdb.org/t/p/w45${s.watch_provider_logo}`} className="w-5 h-5 rounded shadow-sm" title={s.watch_provider_name} alt="VOD"/>}
-                      </h4>
-                      <p className="text-sm text-gray-400">{s.first_air_date?.substring(0, 4) || "Puste"}</p>
-                    </div>
-                    <div className="flex items-center justify-end">
-                       <button 
-                         onClick={() => addSeries(s, defaultBoard === "private" ? null : defaultBoard)}
-                         className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 hover:ring-indigo-500/50 flex items-center justify-center text-gray-400 hover:text-white transition-all shadow-[0_0_15px_rgba(168,85,247,0.1)] group-hover:bg-[#a855f7]/20 group-hover:text-white group-hover:ring-[#a855f7]/50"
-                         title={defaultBoard === "private" ? "Dodaj do Osobistej Tablicy" : "Dodaj do Grupy"}
-                       >
-                         <Plus size={20} />
-                       </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+              <a href="#portfolio" className="px-8 py-4 bg-amber-600 text-black font-bold uppercase tracking-widest hover:bg-white transition-all w-full md:w-auto text-center">
+                Zobacz Portfolio
+              </a>
+              <a href="#contact" className="px-8 py-4 border border-white/20 hover:bg-white/10 transition-all w-full md:w-auto uppercase tracking-widest font-bold text-center border-b-2 border-b-amber-600/30">
+                Konsultacja
+              </a>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* O nas */}
+      <section id="about" className="py-24 bg-[#0d0d0d]">
+        <div className="container mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+            <motion.div {...fadeInUp}>
+              <span className="text-amber-500 font-bold tracking-widest uppercase mb-4 block text-sm">O nas</span>
+              <h2 className="text-4xl md:text-5xl font-serif mb-6 leading-tight">Tworzymy historię na skórze od 2012 roku</h2>
+              <p className="text-stone-400 leading-relaxed mb-8">
+                Zlokalizowane w sercu Trójmiasta, Studio Aeterna to sterylna przestrzeń klasy premium dla wymagających. Wierzymy, że tatuaż to nie tylko atrament – to manifestacja Twojej osobowości, historia zapisana w cieniu i świetle.
+              </p>
+              <ul className="space-y-4 text-stone-200">
+                <li className="flex items-center gap-3">
+                  <CheckCircle2 className="text-amber-500 w-5 h-5" />
+                  <span>Certyfikowani artyści i najwyższa higiena</span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <CheckCircle2 className="text-amber-500 w-5 h-5" />
+                  <span>Dostępne wegańskie tusze najwyższej jakości</span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <CheckCircle2 className="text-amber-500 w-5 h-5" />
+                  <span>Indywidualne projekty na zamówienie</span>
+                </li>
+              </ul>
+            </motion.div>
+            <motion.div 
+              {...fadeInUp}
+              className="grid grid-cols-2 gap-4"
+            >
+              <img src="https://images.unsplash.com/photo-1550523171-700947ba964e?auto=format&fit=crop&q=80" alt="Wnętrze studia" className="rounded-lg shadow-2xl mt-8" />
+              <img src="https://images.unsplash.com/photo-1611501275019-9b5cda994e8d?auto=format&fit=crop&q=80" alt="Praca artysty" className="rounded-lg shadow-2xl" />
+            </motion.div>
           </div>
+        </div>
+      </section>
 
-          {/* Owalne Tabsy Prawa Strona - Split Layout */}
-          <div className="flex flex-col md:flex-row items-center justify-center gap-3 w-full md:w-auto">
-             
-             {/* Pasek Zakłądek */}
-             <div className="rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-fuchsia-500 p-[1.5px] shadow-lg w-full md:w-auto">
-               <div className="flex w-full md:w-auto overflow-x-auto bg-[#060813]/90 backdrop-blur-2xl rounded-full p-2 items-center gap-1 h-full scrollbar-hide snap-x relative z-10">
-                 <button 
-                    onClick={(e) => toggleDefaultBoard(e, "private")}
-                    className={`shrink-0 snap-start py-2 px-5 md:px-6 rounded-full text-sm font-bold transition whitespace-nowrap ${defaultBoard === 'private' ? 'bg-[#a855f7]/20 ring-1 ring-[#a855f7]/50 text-white shadow-[0_0_15px_rgba(168,85,247,0.2)]' : 'text-gray-400 border border-transparent hover:text-white hover:bg-white/5'}`}
-                 >
-                    Osobista Tablica
-                 </button>
-                 
-                 {workspaces.map(w => (
-                    <button 
-                      key={w.id}
-                      onClick={(e) => toggleDefaultBoard(e, w.id)}
-                      className={`shrink-0 snap-start py-2 px-5 md:px-6 rounded-full text-sm font-bold transition whitespace-nowrap ${defaultBoard === w.id ? 'bg-[#a855f7]/20 ring-1 ring-[#a855f7]/50 text-white shadow-[0_0_15px_rgba(168,85,247,0.2)]' : 'text-gray-400 border border-transparent hover:text-white hover:bg-white/5'}`}
-                    >
-                       {w.workspace_name}
-                    </button>
-                 ))}
-               </div>
-             </div>
-
-             {/* Pasek Akcji */}
-             <div className="rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-fuchsia-500 p-[1.5px] shadow-lg shrink-0">
-                <div className="flex bg-[#060813]/90 backdrop-blur-2xl rounded-full p-1.5 items-center justify-center gap-2 w-full h-full">
-                  <button onClick={() => setIsModalOpen(true)} className="w-10 h-10 md:w-9 md:h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition" title="Stwórz Pokój">
-                     <Plus size={16} />
-                  </button>
-
-                  {defaultBoard !== "private" && (
-                     <>
-                       <button onClick={openInviteModal} className="w-10 h-10 md:w-9 md:h-9 rounded-full bg-[#a855f7]/20 border-border-[#a855f7]/50 hover:bg-[#a855f7]/40 flex items-center justify-center text-white transition ring-1 ring-[#a855f7]/50" title="Zaproś do Pokoju">
-                          <UserPlus size={16} />
-                       </button>
-                       <button onClick={() => setWorkspaceToDelete(defaultBoard)} className="w-10 h-10 md:w-9 md:h-9 rounded-full bg-white/5 hover:bg-red-500/20 ring-1 ring-white/5 hover:ring-red-500/40 flex items-center justify-center text-gray-400 hover:text-white transition" title="Zniszcz Pokój">
-                          <Trash2 size={16} />
-                       </button>
-                     </>
-                  )}
-                </div>
-             </div>
-
-          </div>
-
-        </section>
-
-        {/* Modal Potwierdzenia Kosza (UI zastepujace JS confirm) */}
-        {workspaceToDelete !== null && (
-           <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="glass-panel w-full max-w-md rounded-3xl p-8 border border-red-500/20 shadow-[0_0_80px_rgba(239,68,68,0.15)] animate-fade-in relative flex flex-col">
-                 <div className="flex items-center gap-3 mb-2">
-                    <div className="p-3 bg-red-500/20 rounded-full shrink-0">
-                       <Trash2 className="text-red-500" size={24} />
-                    </div>
-                    <h3 className="text-2xl font-bold text-red-500">Spalenie Ekipy</h3>
-                 </div>
-                 <p className="text-sm text-gray-400 mb-6 mt-2 font-medium">Czy na pewno chcesz usunąć tę listę kinową oraz bezpowrotnie pozbawić do niej dostępu całą ekipę? Tej akcji nie da się cofnąć!</p>
-                 
-                 <div className="flex gap-4">
-                     <button onClick={() => setWorkspaceToDelete(null)} className="flex-1 py-3 rounded-xl hover:bg-white/10 transition text-gray-400 font-bold border border-transparent hover:border-white/10">Anuluj</button>
-                     <button 
-                        onClick={confirmDeleteWorkspace}
-                        className="flex-1 bg-red-600/80 hover:bg-red-500 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 transition text-white border border-red-500/50"
-                     >Spal pokój</button>
-                 </div>
+      {/* Portfolio */}
+      <section id="portfolio" className="py-24 px-6">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-serif mb-4 uppercase tracking-tighter">Najnowsze Prace</h2>
+          <div className="h-1 w-24 bg-amber-600 mx-auto"></div>
+        </div>
+        <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <motion.div 
+              key={i} 
+              whileHover={{ scale: 0.98 }}
+              className="relative overflow-hidden group aspect-square rounded-lg cursor-pointer bg-neutral-900 shadow-xl"
+            >
+              <img 
+                src={`https://images.unsplash.com/photo-1560707303-4e980ce876ad?auto=format&fit=crop&q=80&sig=${i}`} 
+                alt={`Praca ${i}`} 
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-70 group-hover:opacity-100"
+              />
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center border-2 border-amber-600/30 m-4 rounded-md">
+                <span className="text-white font-semibold uppercase tracking-widest flex items-center gap-2">
+                  Zobacz detale <ChevronRight className="w-4 h-4"/>
+                </span>
               </div>
-           </div>
-        )}
+            </motion.div>
+          ))}
+        </div>
+      </section>
 
-        {/* Modal Customowy - Tworzenie Wspoldzelonego Pokoju Ostrza */}
-        {isModalOpen && (
-             <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="glass-panel w-full max-w-md rounded-3xl p-8 border border-white/10 shadow-2xl animate-fade-in relative">
-                  <h3 className="text-2xl font-bold mb-2">Nowy Pokój</h3>
-                  <p className="text-sm text-gray-400 mb-6">Wpisz nazwę paczki ze znajomymi (np. Nocna Ekipa Binge).</p>
-                  
-                  <input 
-                    value={newWorkspaceName}
-                    onChange={(e) => setNewWorkspaceName(e.target.value)}
-                    placeholder="Wpisz nazwę pokoju..."
-                    autoFocus
-                    className="w-full bg-black/30 border border-white/10 rounded-xl px-5 py-4 mb-6 outline-none focus:border-purple-500 transition text-white"
-                  />
-                  
-                  <div className="flex gap-4">
-                     <button onClick={() => { setIsModalOpen(false); setNewWorkspaceName(""); }} className="flex-1 py-3 rounded-xl hover:bg-white/10 transition text-gray-400 font-bold border border-transparent hover:border-white/10">Anuluj</button>
-                     <button 
-                        onClick={async () => {
-                           if(!newWorkspaceName.trim()) return;
-                           await fetch("/api/workspace", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ action: "CREATE", name: newWorkspaceName }) });
-                           setIsModalOpen(false);
-                           setNewWorkspaceName("");
-                           fetchWorkspaces();
-                        }}
-                        className="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded-xl font-bold shadow-lg transition"
-                     >Stwórz</button>
+      {/* Usługi */}
+      <section className="py-24 bg-[#0d0d0d]">
+        <div className="container mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-8">
+          {services.map((s, idx) => (
+            <motion.div 
+              key={idx}
+              whileHover={{ y: -10 }}
+              className="p-8 bg-white/5 border border-white/10 rounded-xl hover:border-amber-500/50 transition-all border-b-4 border-b-amber-600/20"
+            >
+              <div className="mb-6">{s.icon}</div>
+              <h3 className="text-xl font-bold mb-3">{s.title}</h3>
+              <p className="text-stone-400 text-sm leading-relaxed">{s.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* Kontakt i Rezerwacja */}
+      <section id="contact" className="py-24 bg-stone-900/10">
+        <div className="container mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+            <motion.div {...fadeInUp}>
+              <h2 className="text-4xl font-serif mb-8">Napisz do nas</h2>
+              <div className="space-y-8">
+                <div className="flex items-start gap-4">
+                  <MapPin className="text-amber-500 shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-bold uppercase text-xs mb-1 text-amber-500">Nasza Lokalizacja</h4>
+                    <p className="text-stone-300">ul. Portowa 12, Gdynia, Polska</p>
                   </div>
                 </div>
-             </div>
-          )}
-
-        {/* Modal Zapraszania do Pokoju z Puli użytkowników */}
-        {isInviteModalOpen && (
-           <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="glass-panel w-full max-w-md rounded-3xl p-8 border border-white/10 shadow-2xl animate-fade-in relative flex flex-col max-h-[85vh]">
-                <h3 className="text-2xl font-bold mb-2">Zaproś do grupy</h3>
-                <p className="text-sm text-gray-400 mb-6">Wybierz użytkownika z serwera, aby zaprosić go The do pokoju.</p>
-                
-                <div className="flex-1 overflow-y-auto pr-2 space-y-3 mb-6 scrollbar-thin scrollbar-thumb-purple-600">
-                   {availableUsers.length === 0 ? (
-                      <div className="text-gray-500 text-center py-6 text-sm">Brak wolnych znajomych do wkręcenia!</div>
-                   ) : availableUsers.map(u => (
-                      <div key={u.id} className="flex justify-between items-center bg-[#090b14] p-3 rounded-2xl border border-white/5 hover:border-[#a855f7]/50 transition opacity-80 hover:opacity-100">
-                         <div className="flex items-center gap-3">
-                           <img src={u.image || "https://ui-avatars.com/api/?background=random&name=" + u.name} alt={u.name} className="w-10 h-10 rounded-full object-cover shadow-md" />
-                           <div>
-                             <h4 className="text-white font-bold text-sm leading-none mb-1">{u.name}</h4>
-                             <p className="text-xs text-gray-500 truncate max-w-[150px]">{u.email}</p>
-                           </div>
-                         </div>
-                         <button onClick={() => inviteUserById(u.id)} className="bg-white/10 hover:bg-[#a855f7] text-white p-2 px-4 rounded-xl text-xs font-bold transition shadow-sm border border-transparent">Zaproś</button>
-                      </div>
-                   ))}
+                <div className="flex items-start gap-4">
+                  <Clock className="text-amber-500 shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-bold uppercase text-xs mb-1 text-amber-500">Godziny Otwarcia</h4>
+                    <p className="text-stone-300">Wt. - Sob.: 11:00 - 19:00</p>
+                  </div>
                 </div>
-                
-                <div className="flex mt-auto">
-                   <button onClick={() => setIsInviteModalOpen(false)} className="w-full py-4 rounded-xl hover:bg-white/10 transition text-gray-400 font-bold border border-transparent hover:border-white/10">Zamknij</button>
+                <div className="flex items-start gap-4">
+                  <Mail className="text-amber-500 shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-bold uppercase text-xs mb-1 text-amber-500">Zapytania</h4>
+                    <p className="text-stone-300">hello@aeternatattoo.com</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <Phone className="text-amber-500 shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-bold uppercase text-xs mb-1 text-amber-500">Telefon</h4>
+                    <p className="text-stone-300">+48 555 123 456</p>
+                  </div>
                 </div>
               </div>
-           </div>
-        )}
 
-        {/* Kokpit Tablicy: Posortowane Kafelki Finałowe */}
-        <section>
+              <div className="mt-12 flex space-x-6">
+                <a href="#" className="p-3 bg-white/5 rounded-full hover:bg-amber-600 hover:text-black transition-all border border-white/10">
+                  <Share2 className="w-6 h-6" />
+                </a>
+                <a href="#" className="p-3 bg-white/5 rounded-full hover:bg-amber-600 hover:text-black transition-all border border-white/10">
+                  <Globe className="w-6 h-6" />
+                </a>
+              </div>
+            </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {(defaultBoard === "private" ? mySeries : activeBoardData?.series || []).length === 0 ? (
-               <div className="col-span-full py-20 text-center glass-panel rounded-3xl border-dashed border-2 px-8">
-               <h3 className="text-gray-400 text-xl font-medium mb-3">Ta tablica jest pusta.</h3>
-               <p className="text-sm text-gray-500 max-w-sm mx-auto">Skorzystaj z wyszukiwarki lub dodaj coś do tej kolekcji by zacząć śledzić finały.</p>
-             </div>
-            ) : (
-              (defaultBoard === "private" ? mySeries : activeBoardData?.series || []).map((item: any) => {
-                const epDate = item.seriesCache?.next_ep_air_date;
-                const posterPath = item.seriesCache?.poster_path;
-                const title = item.seriesCache?.title;
-                const tmdbId = item.tmdb_id;
-                
-                let daysLeft: number | null = null;
-                if (epDate) {
-                  const premiereDate = new Date(epDate);
-                  premiereDate.setHours(0, 0, 0, 0);
-                  
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  
-                  daysLeft = Math.round((premiereDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-                }
-                
-                return (
-                <Link href={`/series/${tmdbId}${defaultBoard !== 'private' ? '?ws=' + defaultBoard : ''}`} key={item.id} className="rounded-2xl overflow-hidden group relative block cursor-pointer transition-transform duration-300 hover:scale-[1.02] aspect-[2/3] bg-black shadow-2xl border border-white/5">
-                   
-                   {/* Labelka */}
-                   {daysLeft !== null && daysLeft > 0 && (
-                     <div className="absolute top-4 right-4 z-10 bg-[#e11d48] text-white text-[11px] uppercase tracking-wider font-extrabold px-3 py-1 rounded-full shadow-[0_0_20px_rgba(225,29,72,0.6)]">
-                       {daysLeft === 1 ? 'Za 1 dzień' : `Za ${daysLeft} dni`}
-                     </div>
-                   )}
-                   {daysLeft !== null && daysLeft <= 0 && (
-                     <div className="absolute top-4 right-4 z-10 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-[11px] uppercase tracking-wider font-extrabold px-4 py-1 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.5)] border border-white/20">
-                       Dostępny
-                     </div>
-                   )}
-
-                   {/* Poster (Tło całego kafelka) */}
-                   <img 
-                     src={posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : "https://via.placeholder.com/500x750?text=Brak+Okładki"} 
-                     className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-110 transition duration-700"
-                     alt={title}
-                   />
-                   
-                   {/* Nakładka dolna (Gradientowe półprzezroczyste tło) */}
-                   <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-[#05070e] via-[#05070e]/95 to-transparent pt-28 opacity-100 transition">
-                      <h3 className="font-normal uppercase tracking-[0.15em] text-lg mb-1.5 truncate text-[#f8fafc] drop-shadow-md group-hover:text-[#a855f7] transition" title={title}>{title}</h3>
-                      
-                      <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 drop-shadow-md">
-                        <Calendar size={13} className="text-gray-500"/>
-                        {epDate 
-                          ? new Date(epDate).toLocaleDateString('pl-PL', { year: 'numeric', month: 'short', day: 'numeric' }) 
-                          : "Brak potwierdzonej daty"}
-                      </div>
-                      
-                      <div className="overflow-hidden transition-all duration-300 max-h-0 group-hover:max-h-20 mt-0 group-hover:mt-4">
-                         <span className="text-[10px] font-bold text-[#a855f7] uppercase tracking-widest flex items-center gap-1">Szczegóły <ChevronDown size={12} className="-rotate-90"/></span>
-                      </div>
-                   </div>
-
-                </Link>
-                );
-              })
-            )}
+            <motion.div 
+              {...fadeInUp}
+              className="bg-zinc-900/50 backdrop-blur-sm border border-white/5 p-8 rounded-2xl shadow-2xl"
+            >
+              <h3 className="text-2xl font-serif mb-6 text-center italic text-balance">Zaproś sztukę na swoją skórę</h3>
+              <form className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input type="text" placeholder="Imię" className="w-full bg-black/50 border border-white/10 p-3 rounded-md focus:border-amber-500 outline-none transition-colors text-white" />
+                  <input type="text" placeholder="Nazwisko" className="w-full bg-black/50 border border-white/10 p-3 rounded-md focus:border-amber-500 outline-none transition-colors text-white" />
+                </div>
+                <input type="email" placeholder="E-mail" className="w-full bg-black/50 border border-white/10 p-3 rounded-md focus:border-amber-500 outline-none transition-colors text-white" />
+                <select className="w-full bg-black/50 border border-white/10 p-3 rounded-md focus:border-amber-500 outline-none transition-colors text-stone-400">
+                  <option>Wybierz styl</option>
+                  <option>Minimalizm</option>
+                  <option>Realizm</option>
+                  <option>Tradycyjny</option>
+                  <option>Inny</option>
+                </select>
+                <textarea rows={4} placeholder="Opisz swój pomysł (rozmiar, miejsce...)" className="w-full bg-black/50 border border-white/10 p-4 rounded-md focus:border-amber-500 outline-none transition-colors text-white"></textarea>
+                <button type="submit" className="w-full py-4 bg-amber-600 text-black font-bold uppercase tracking-widest hover:bg-white transition-colors rounded-sm shadow-lg shadow-amber-600/20">
+                  Wyślij prośbę o termin
+                </button>
+              </form>
+            </motion.div>
           </div>
-        </section>
+        </div>
+      </section>
 
-      </main>
+      {/* Stopka */}
+      <footer className="py-12 border-t border-white/5 text-center bg-black">
+        <p className="text-stone-500 text-xs tracking-widest uppercase mb-2">
+          &copy; {new Date().getFullYear()} AETERNA TATTOO STUDIO. Wszystkie prawa zastrzeżone.
+        </p>
+        <p className="text-stone-600 text-[10px]">Stworzone z pasją do sztuki trwałej.</p>
+      </footer>
     </div>
   );
-}
+};
+
+export default AeternaTattooStudio;
