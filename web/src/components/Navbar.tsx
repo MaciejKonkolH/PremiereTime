@@ -6,7 +6,7 @@ import Link from "next/link";
 import { UserButton, SignInButton, useUser, useClerk } from "@clerk/nextjs";
 
 export default function Navbar() {
-  const { isSignedIn, isLoaded, user } = useUser();
+  const { isSignedIn, isLoaded } = useUser();
   const { signOut } = useClerk();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -124,12 +124,7 @@ export default function Navbar() {
         <div className="flex items-center gap-4 border-l border-white/10 pl-6 shrink-0">
           {isLoaded && isSignedIn ? (
             <div className="flex items-center gap-3">
-              {/* Zastąpienie UserButton zwykłym obrazkiem awatara dla stabilności buildu */}
-              <img 
-                src={user?.imageUrl} 
-                alt="Profil" 
-                className="w-10 h-10 rounded-full border border-white/10 ring-2 ring-indigo-500/20"
-              />
+              <UserButton afterSignOutUrl="/sign-in" />
               <button 
                 onClick={() => signOut({ redirectUrl: "/sign-in" })}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition border border-white/5"
@@ -141,9 +136,9 @@ export default function Navbar() {
           ) : (
             isLoaded && (
               <SignInButton mode="modal">
-                <div className="text-sm font-bold text-gray-400 hover:text-white transition uppercase tracking-widest px-4 py-2 border border-white/10 rounded-xl hover:bg-white/5 cursor-pointer">
+                <button className="text-sm font-bold text-gray-400 hover:text-white transition uppercase tracking-widest px-4 py-2 border border-white/10 rounded-xl hover:bg-white/5 cursor-pointer">
                   Zaloguj
-                </div>
+                </button>
               </SignInButton>
             )
           )}
